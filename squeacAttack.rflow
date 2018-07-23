@@ -23,7 +23,14 @@ gc()
 			<property title="reset" shape="STAR"/>
 			<option type="com.ef_prime.rflow.node.base.FreeNodeModel"/>
 		</node>
-		<node id="1" date="1532077231471" uid="89a4717b15077a1a" x="160" y="-70">
+		<node id="1" date="1448884702913" uid="b256e103eb1f772e" x="50" y="-70">
+			<command>## Retrieve data
+work &lt;- read.table(file = &quot;squeacAttack.csv&quot;, header = TRUE, sep = &quot;,&quot;, stringsAsFactors = FALSE, na.strings = &quot;NA&quot;)
+</command>
+			<property title="readData" shape="INPUT"/>
+			<option type="com.ef_prime.rflow.node.base.FreeNodeModel"/>
+		</node>
+		<node id="2" date="1532077231471" uid="89a4717b15077a1a" x="160" y="-70">
 			<command>## Calculate &apos;K&apos; for single coverage estimate assuming average length of an untreated episode or SAM or MAM is 7.5 months from Garenne et al. (2009)
 medianLOS &lt;- median(work$medianLOS, na.rm = TRUE)
 k &lt;- ((7.5 * 30.44) / 7) / work$medianLOS
@@ -40,7 +47,7 @@ priorMode &lt;- priorN / priorD
 likeN &lt;- ifelse(work$coverType == &quot;point&quot;, work$c.in, work$c.in + work$r.in)
 likeD &lt;- ifelse(work$coverType == &quot;point&quot;, work$c.in + work$c.out, ifelse(work$coverType == &quot;period&quot;, work$c.in + work$r.in + work$c.out, work$c.in + work$r.in + work$c.out + work$r.out))
 likeMode &lt;- likeN / likeD
-	
+
 ## Make summary data.frame
 results &lt;- data.frame(priorN, priorD, priorMode, likeN, likeD, likeMode)
 results &lt;- results[!is.na(results$priorMode) &amp; !is.na(results$likeMode), ]
@@ -63,9 +70,16 @@ table(results$PLC)
 round(prop.table(table(results$PLC)) * 100, 2)
 
 ## How are the prior and likelihood modes related?
-png(filename = &quot;plPlot.png&quot;, width = 6, height = 6, units = &quot;in&quot;, pointsize = 12, res = 600)
-par(pty = &quot;s&quot;)
-plot(results$priorMode * 100, results$likeMode * 100, xlim = c(0, 100), ylim = c(0, 100), xlab = &quot;Prior mode&quot;, ylab = &quot;Likelihood mode&quot;, pch = ifelse(results$PLC, 19, 1), frame.plot = FALSE)
+png(filename = &quot;errorHist.png&quot;, width = 6, height = 6, units = &quot;in&quot;, pointsize = 12, res = 600)
+## Errors (difference)
+error &lt;- results$priorMode * 100 - results$likeMode * 100
+summary(error)
+hist(error, breaks = 16, xlab = &quot;Prior mode (%) - Likelihood mode (%)&quot;, ylab = &quot;Number of assessments&quot;, main = &quot;&quot;)
+rm(error)
+dev.off()
+## Scatterplot
+png(filename = &quot;qaPlot.png&quot;, width = 6, height = 6, units = &quot;in&quot;, pointsize = 12, res = 600)
+plot(results$priorMode * 100, results$likeMode * 100, xlim = c(0, 100), ylim = c(0, 100), xlab = &quot;Prior mode (%)&quot;, ylab = &quot;Likelihood mode (%)&quot;, pch = ifelse(results$PLC, 19, 1), frame.plot = FALSE)
 abline(a = 0, b = 1, lty = 2)
 text(100, 15, &quot;Prior mode &gt; Likelihood mode&quot;, pos = 2, cex = 0.8)
 text(  0, 85, &quot;Prior mode &lt; Likelihood mode&quot;, pos = 4, cex = 0.8)
@@ -76,36 +90,31 @@ cor(results$priorMode, results$likeMode)
 ## How precise is the likelihood estimate alone (Assuming total population = 100,000 with 17% aged 6-59 months and p(SAM) = 2%)
 rejected &lt;- results[results$PLC, ]
 pop &lt;- 100000 * 0.17 * 0.02 
-FPC &lt;- sqrt((pop - rejected$likeD) / (pop - 1))
-rejected$hw &lt;- qnorm(0.975) * sqrt((rejected$likeMode * (1 - rejected$likeMode)) / rejected$likeD) * FPC
-summary(rejected$hw)
-rm(pop, FPC)
-# How many have precision of ± 10% or better
-table(rejected$hw &lt;= 0.10)
-prop.table(table(rejected$hw &lt;= 0.10))
+rejected$FPC &lt;- sqrt((pop - rejected$likeD) / (pop - 1))
+rm(pop)
+## Relative precision
+rejected$likeRP &lt;- (qnorm(0.975) * sqrt((rejected$likeMode * (1 - rejected$likeMode)) / rejected$likeD) * rejected$FPC) / rejected$likeMode
+## Relative precision of an EPI coverage survey with p = likelihood mode, n = 120, and DEFF = 2.0?
+rejected$epiRP &lt;- (2.0 * qnorm(0.975) * sqrt((rejected$likeMode * (1 - rejected$likeMode)) / 210)) / rejected$likeMode
+## How many have relative precision of better than or equal to the assumed EPI survey?
+table(rejected$likeRP &lt;= rejected$epiRP)
+prop.table(table(rejected$likeRP &lt;= rejected$epiRP))
 
 ## Proportion of SQUEAC assessments that fail by ...
 #
-#    prior likelihood conflict == TRUE AND precision worse than 10%
+#    prior likelihood conflict == TRUE AND precision worse than the assumed EPI survey
 #
-failN &lt;- sum(ifelse(rejected$hw &gt; 0.10, 1, 0))
-failP &lt;- round(sum(ifelse(rejected$hw &gt; 0.10, 1, 0)) / nrow(results) * 100, 2) 
+failN &lt;- sum(ifelse(rejected$likeRP &gt; rejected$epiRP, 1, 0))
+failP &lt;- round(sum(ifelse(rejected$likeRP &gt; rejected$epiRP, 1, 0)) / nrow(results) * 100, 2) 
 print(failN)
 print(failP)
-rm(rejected, failN, failP)
+rm(failN, failP)
 </command>
 			<property title="analyseData"/>
 			<option type="com.ef_prime.rflow.node.base.FreeNodeModel"/>
 		</node>
-		<node id="2" date="1448884702913" uid="b256e103eb1f772e" x="50" y="-70">
-			<command>## Retrieve data
-work &lt;- read.table(file = &quot;squeacAttack.csv&quot;, header = TRUE, sep = &quot;,&quot;, stringsAsFactors = FALSE, na.strings = &quot;NA&quot;)
-</command>
-			<property title="readData" shape="INPUT"/>
-			<option type="com.ef_prime.rflow.node.base.FreeNodeModel"/>
-		</node>
-		<edge from="0" to="2"/>
-		<edge from="2" to="1"/>
+		<edge from="0" to="1"/>
+		<edge from="1" to="2"/>
 	</graph>
 	<task>
 		<taskgroup>
