@@ -7,7 +7,7 @@
 <!ENTITY quot "&#34;">
 ]>
 <rflow>
-	<graph version="0.8" width="1426" height="617" locationtype="a" offsetx="100" offsety="121">
+	<graph version="0.8" width="1301" height="421" locationtype="a" offsetx="100" offsety="121">
 		<setting>
 			<entry key="USE_GRID">true</entry>
 			<entry key="FOLDER">cmnSurveys</entry>
@@ -16,27 +16,20 @@
 <properties>
 <v key="packages"/>
 </properties>
-		<node id="0" date="1531929174847" uid="fd6ca739aa2c5ec" x="-50" y="-70">
-			<command>rm(list = ls())
-gc()
-</command>
-			<property title="reset" shape="STAR"/>
-			<option type="com.ef_prime.rflow.node.base.FreeNodeModel"/>
-		</node>
-		<node id="1" date="1448884702913" uid="b256e103eb1f772e" x="50" y="-70">
+		<node id="0" date="1448884702913" uid="b256e103eb1f772e" x="50" y="-70">
 			<command>## Retrieve data
 work &lt;- read.table(file = &quot;squeacAttack.csv&quot;, header = TRUE, sep = &quot;,&quot;, stringsAsFactors = FALSE, na.strings = &quot;NA&quot;)
 </command>
 			<property title="readData" shape="INPUT"/>
 			<option type="com.ef_prime.rflow.node.base.FreeNodeModel"/>
 		</node>
-		<node id="2" date="1532077231471" uid="89a4717b15077a1a" x="160" y="-70">
+		<node id="1" date="1532077231471" uid="89a4717b15077a1a" x="160" y="-70">
 			<command>## Calculate &apos;K&apos; for single coverage estimate assuming average length of an untreated episode or SAM or MAM is 7.5 months from Garenne et al. (2009)
 medianLOS &lt;- median(work$medianLOS, na.rm = TRUE)
 k &lt;- ((7.5 * 30.44) / 7) / work$medianLOS
 
 ## Calculate r.out (recovering cases NOT in the program)
-r.out &lt;- floor((1 / work$k) * (work$r.in * ((work$c.in + work$c.out + 1) / (work$c.in + 1)) - work$r.in))
+r.out &lt;- floor((1 / k) * (work$r.in * ((work$c.in + work$c.out + 1) / (work$c.in + 1)) - work$r.in))
 
 ## Calculate Prior modes (priorMode) from priorAlpha and priorBeta with their standard errors (priorModeSE)
 priorN &lt;- work$priorAlpha - 1
@@ -45,7 +38,7 @@ priorMode &lt;- priorN / priorD
 
 ## Calculate appropriate likelihood numerators (likeN) denominators (likeD)
 likeN &lt;- ifelse(work$coverType == &quot;point&quot;, work$c.in, work$c.in + work$r.in)
-likeD &lt;- ifelse(work$coverType == &quot;point&quot;, work$c.in + work$c.out, ifelse(work$coverType == &quot;period&quot;, work$c.in + work$r.in + work$c.out, work$c.in + work$r.in + work$c.out + work$r.out))
+likeD &lt;- ifelse(work$coverType == &quot;point&quot;, work$c.in + work$c.out, ifelse(work$coverType == &quot;period&quot;, work$c.in + work$r.in + work$c.out, work$c.in + work$r.in + work$c.out + r.out))
 likeMode &lt;- likeN / likeD
 
 ## Make summary data.frame
@@ -113,8 +106,15 @@ rm(failN, failP)
 			<property title="analyseData"/>
 			<option type="com.ef_prime.rflow.node.base.FreeNodeModel"/>
 		</node>
+		<node id="2" date="1531929174847" uid="fd6ca739aa2c5ec" x="-50" y="-70">
+			<command>rm(list = ls())
+gc()
+</command>
+			<property title="reset" shape="STAR"/>
+			<option type="com.ef_prime.rflow.node.base.FreeNodeModel"/>
+		</node>
+		<edge from="2" to="0"/>
 		<edge from="0" to="1"/>
-		<edge from="1" to="2"/>
 	</graph>
 	<task>
 		<taskgroup>
