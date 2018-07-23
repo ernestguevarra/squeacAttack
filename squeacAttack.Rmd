@@ -1,0 +1,369 @@
+---
+title: "SQUEAC Attack"
+author: "Mark Myatt"
+date: 32 July 2018 #'`r format(Sys.Date(), "%d %B %Y")`'
+fontsize: 12pt
+geometry: margin=2cm
+documentclass: article
+classoption: a4paper
+bibliography: bibliography.bib
+link-citations: TRUE
+links-as-notes: FALSE
+colorlinks: TRUE
+linkcolor: blue
+citecolor: blue
+urlcolor: blue
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+work <- read.csv("squeacAttack.csv")
+
+if(!require(knitr)) install.packages("knitr")
+if(!require(kableExtra)) install.packages("kableExtra")
+if(!require(magrittr)) install.packages("magrittr")
+
+```
+
+\newpage
+
+# Calculate 'k' for single coverage estimate {#k}
+
+Correction factor `k` is the ratio of the mean length of an untreated episode to the mean length of a CMAM treatment episode.
+
+&nbsp;
+
+$$ k ~ = ~ \frac{\text{Mean length of an untreated episode}}{\text{Mean length of a successful treatment episode}} $$
+
+&nbsp;
+
+Mean length of an untreated episode for SAM or MAM can be assumed as 7.5 months based on @Garenne:2009fq. Mean length of a successful treatment episode can be estimated from routine programming monitoring data by calculating the median length of stay.
+
+This can be implemented in R as follows:
+
+&nbsp;
+
+```{r echo = TRUE, eval = TRUE}
+medianLOS <- median(work$medianLOS, na.rm = TRUE)
+
+k <- ((7.5 * 30.44) / 7) / work$medianLOS
+```
+
+&nbsp;
+
+The **median of the median length of stay** of the surveys in the dataset is `r medianLOS`.
+
+The `k` values for each of the surveys in the dataset are[^1]:
+
+&nbsp;
+
+```{r echo = FALSE, eval = TRUE}
+k
+```
+
+\newpage
+
+# Calculate r.out (recovering cases NOT in the program) {#r.out}
+
+Using the calculated `k` values in previous section, number of recovering cases NOT in the program is calculated using the following formula:
+
+&nbsp;
+
+$$\begin{aligned}
+R_{out} & ~ \approx ~ \frac{1}{k} ~ \times ~ \left ( ~ R_{in} ~ \times ~ \frac{C_{in} ~ + ~ C_{out} ~ + ~ 1}{C_{in} ~ + ~ 1} ~ - ~ R_{in} ~ \right ) \\
+\\
+where: & \\
+\\
+k & ~ = ~ \text{correction factor} \\
+C_{in} & ~ = ~ \text{current SAM cases in the program} \\
+C_{out} & ~ = ~ \text{current SAM cases not in the program} \\ 
+R_{in} & ~ = ~ \text{recovering SAM cases in the program}
+\end{aligned}$$
+
+&nbsp;
+
+This can be implemented in R as follows:
+
+&nbsp;
+
+```{r, echo = TRUE, eval = TRUE}
+r.out <- floor((1 / k) * 
+                 (work$r.in * ((work$c.in + work$c.out + 1) / 
+                                 (work$c.in + 1)) - work$r.in))
+```
+
+&nbsp;
+
+The resulting vector of `r.out` values are:
+
+&nbsp;
+
+```{r, echo = FALSE, eval = TRUE}
+r.out
+```
+
+\newpage
+
+# Calculate Prior modes (priorMode) from priorAlpha and priorBeta with their standard errors (priorModeSE)
+
+The Prior mode can be calculated from Prior $\alpha$ and Prior $\beta$ as shown in the following formula.
+
+&nbsp;
+
+$$ mode_{Prior} ~ = ~ \frac{\alpha_{Prior} - 1}{\alpha_{Prior} ~ + ~ \beta_{Prior} ~ - ~ 2} $$
+
+&nbsp;
+
+This can be implemented in R as follows:
+
+&nbsp;
+
+```{r echo = TRUE, eval = TRUE}
+priorN <- work$priorAlpha - 1
+
+priorD <- work$priorAlpha + work$priorBeta - 2
+
+priorMode <- priorN / priorD
+```
+
+&nbsp;
+
+which results in:
+
+&nbsp;
+
+```{r priortable, echo = FALSE, eval = TRUE}
+priortable <- data.frame(priorN, priorD, round(priorMode, digits = 2))
+
+kable(x = priortable[1:20, ],
+      caption = "Prior numerator, Prior denominator and Prior mode (first 20 records)",
+      booktabs = TRUE,
+      row.names = FALSE,
+      col.names = c("$Prior_{numerator}$", "$Prior_{denominator}$", "$Prior_{mode}$"),
+      escape = FALSE,
+      format = "latex") %>%
+  row_spec(row = 0, bold = TRUE) %>%
+  kable_styling(latex_options = c("HOLD_position", "striped"),
+                position = "center")
+```
+
+\newpage
+
+# Calculate appropriate likelihood numerators (likeN) denominators (likeD)
+
+The likelihood mode can be calculated depending on the coverage estimator to assess: *point coverage* or *period coverage*.
+
+&nbsp;
+
+$$\begin{aligned}
+\text{Point coverage} ~ & = ~ \frac{C_{in}}{C_{in} + C_{out}} \\
+\\
+\text{Period coverage} ~ & = ~ \frac{C_{in} ~ + ~ R_{in}}{C_{in} ~ + ~ C_{out} ~ + ~ R_{in} ~ + ~ R_{out}}\\
+\\
+where: & \\
+\\
+C_{in} & ~ = ~ \text{current SAM cases in the program} \\
+C_{out} & ~ = ~ \text{current SAM cases not in the program} \\ 
+R_{in} & ~ = ~ \text{recovering SAM cases in the program} \\
+R_{out} & ~ = ~ \text{recovering SAM cases not in the program}
+\end{aligned}$$
+
+&nbsp;
+
+This can be implemented in R as follows:
+
+&nbsp;
+
+```{r, echo = TRUE, eval = TRUE}
+likeN <- ifelse(work$coverType == "point", work$c.in, work$c.in + work$r.in)
+
+likeD <- ifelse(work$coverType == "point", work$c.in + work$c.out, 
+           ifelse(work$coverType == "period", 
+                  work$c.in + work$r.in + work$c.out, 
+                  work$c.in + work$r.in + work$c.out + r.out))
+
+likeMode <- likeN / likeD
+```
+
+&nbsp;
+
+which results in:
+
+```{r liketable, echo = FALSE, eval = TRUE}
+liketable <- data.frame(likeN, likeD, round(likeMode, digits = 2))
+
+kable(x = liketable[1:20, ],
+      caption = "Likelihood numerator, likelihood denominator and likelihood mode",
+      booktabs = TRUE,
+      row.names = FALSE,
+      col.names = c("$Likelihood_{numerator}$", "$Likelihood_{denominator}$", "$Likelihood_{mode}$"),
+      escape = FALSE,
+      format = "latex") %>%
+  row_spec(row = 0, bold = TRUE) %>%
+  kable_styling(latex_options = c("HOLD_position", "striped"),
+                position = "center")
+```
+
+\newpage
+
+# Make summary data.frame
+
+```{r, echo = TRUE, eval = TRUE}
+results <- data.frame(priorN, priorD, priorMode, likeN, likeD, likeMode)
+
+results <- results[!is.na(results$priorMode) & !is.na(results$likeMode), ]
+```
+
+The resulting data.frame is:
+
+```{r resultsDF, echo = FALSE, eval = TRUE}
+kable(x = results[1:30, ],
+      caption = "Summary data.frame (first 30 records)",
+      booktabs = TRUE,
+      row.names = FALSE,
+      col.names = c("$Prior_{numerator}$", "$Prior_{denominator}$", "$Prior_{mode}$", 
+                    "$Likelihood_{numerator}$", "$Likelihood_{denominator}$", "$Likelihood_{mode}$"),
+      escape = FALSE,
+      format = "latex") %>%
+  row_spec(row = 0, bold = TRUE) %>%
+  kable_styling(latex_options = c("HOLD_position", "striped", "scale_down"),
+                position = "center")
+```
+
+\newpage
+
+# Test for  prior-likelihood conflict
+
+```{r, echo = TRUE, eval = TRUE}
+for(i in 1:nrow(results)) {
+	# Make a two-by-two table
+	tab <- matrix(c(results$priorN[i], results$priorD[i] - results$priorN[i],
+	                results$likeN[i], results$likeD[i] - results$likeN[i]), 
+	              nrow = 2, byrow = TRUE)
+  # Fisher test (works with expected numbers < 5)
+  results$p[i] <- round(fisher.test(round(tab))$p.value, 4)
+}
+
+results$PLC <- ifelse(results$p < 0.05, TRUE, FALSE)
+```
+
+```{r plctable, echo = FALSE, eval = TRUE}
+kable(x = results[1:30, ],
+      caption = "Summary data.frame with prior-likelihood conflict variable (first 30 records)",
+      booktabs = TRUE,
+      row.names = FALSE,
+      col.names = c("$Prior_{numerator}$", "$Prior_{denominator}$", "$Prior_{mode}$", 
+                    "$Likelihood_{numerator}$", "$Likelihood_{denominator}$", "$Likelihood_{mode}$",
+                    "p-value", "PLC"),
+      escape = FALSE,
+      format = "latex") %>%
+  row_spec(row = 0, bold = TRUE) %>%
+  kable_styling(latex_options = c("HOLD_position", "striped", "scale_down"),
+                position = "center")
+```
+
+\newpage
+
+# How common are prior-likelihood conflicts?
+
+```{r, echo = TRUE, eval = TRUE}
+table(results$PLC)
+round(prop.table(table(results$PLC)) * 100, 2)
+```
+
+\newpage
+
+# How are the prior and likelihood modes related?
+
+&nbsp;
+
+```{r likehist, echo = TRUE, eval = TRUE, fig.cap = "Prior-Likelihood Relationship", fig.align = "center", fig.pos = "H", fig.width = 6, fig.height = 6, fig.retina = 1}
+## Errors (difference)
+error <- results$priorMode * 100 - results$likeMode * 100
+summary(error)
+hist(error, 
+     breaks = 16, 
+     xlab = "Prior mode (%) - Likelihood mode (%)", 
+     ylab = "Number of assessments", 
+     main = "")
+```
+
+\newpage
+
+# Scatterplot
+
+```{r likescatter, echo = TRUE, eval = TRUE, fig.cap = "Prior-Likelihood Relationship", fig.align = "center", fig.pos = "H", fig.width = 6, fig.height = 6, fig.retina = 1}
+plot(results$priorMode * 100, 
+     results$likeMode * 100, 
+     xlim = c(0, 100), ylim = c(0, 100), 
+     xlab = "Prior mode (%)", 
+     ylab = "Likelihood mode (%)", 
+     pch = ifelse(results$PLC, 19, 1), 
+     frame.plot = FALSE)
+abline(a = 0, b = 1, lty = 2)
+text(100, 15, "Prior mode > Likelihood mode", pos = 2, cex = 0.8)
+text(  0, 85, "Prior mode < Likelihood mode", pos = 4, cex = 0.8)
+lines(lowess(results$priorMode * 100, results$likeMode * 100, f = 2/3))
+cor(results$priorMode, results$likeMode)
+```
+
+\newpage
+
+# How precise is the likelihood estimate alone
+
+For this, we assume total population of 100,000 with 17% aged 6-59 months and prevalence of SAM of 2%.
+
+```{r, echo = TRUE, eval = TRUE}
+# Subset to results with PLC == TRUE
+rejected <- results[results$PLC, ]
+# calculate number of SAM
+pop <- 100000 * 0.17 * 0.02 
+# calculate finite population correction factor
+rejected$FPC <- sqrt((pop - rejected$likeD) / (pop - 1))
+```
+
+## Relative precision
+
+```{r, echo = TRUE, eval = TRUE}
+# Relative precision of surveys with PLC
+rejected$likeRP <- (qnorm(0.975) * 
+                      sqrt((rejected$likeMode * 
+                              (1 - rejected$likeMode)) / rejected$likeD) * 
+                    rejected$FPC) / rejected$likeMode
+
+# Relative precision of an EPI coverage survey with p = likelihood mode, 
+# n = 120, and DEFF = 2.0?
+rejected$epiRP <- (2.0 * qnorm(0.975) * 
+                     sqrt((rejected$likeMode * 
+                             (1 - rejected$likeMode)) / 210)) / rejected$likeMode
+
+# How many have relative precision of better than or equal to the 
+# assumed EPI survey?
+
+table(rejected$likeRP <= rejected$epiRP)
+prop.table(table(rejected$likeRP <= rejected$epiRP))
+```
+
+\newpage
+
+```{r, echo = TRUE, eval = TRUE}
+# Proportion of SQUEAC assessments that fail by ...
+#
+#    prior likelihood conflict == TRUE AND precision worse than the 
+#    assumed EPI survey
+#
+failN <- sum(ifelse(rejected$likeRP > rejected$epiRP, 1, 0))
+failP <- round(sum(ifelse(rejected$likeRP > rejected$epiRP, 1, 0)) / 
+                 nrow(results) * 100, 2) 
+
+print(failN)
+print(failP)
+```
+
+\newpage
+
+# References {#references}
+
+
+[^1]: `NA` values are for surveys that don't report a median length of stay.
